@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://financetrackerhasan.vercel.app/sitemap.xml
