@@ -39,14 +39,24 @@ logging.basicConfig(level=logging.INFO)
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
-redis_client = redis.from_url(app.config["REDIS_URL"], decode_responses=True)
-
 limiter = Limiter(
     get_remote_address,
     app=app,
     storage_uri=app.config["RATELIMIT_STORAGE_URI"],
     default_limits=["200 per hour"],
 )
+
+
+def _init_redis(url: str):
+    try:
+        client = redis.from_url(url, decode_responses=True)
+        client.ping()
+        app.logger.info("Redis connected")
+        return client
+    except Exception as exc:
+        app.logger.warning("Redis disabled (init failed): %s", exc)
+        return None
+
 
 # Initialize AI providers
 gemini_model = None
@@ -67,6 +77,8 @@ if _openai_api_key:
         app.logger.info("OpenAI client initialized")
     except Exception as exc:
         app.logger.error("OpenAI initialization error: %s", exc)
+
+redis_client = _init_redis(app.config["REDIS_URL"])
 
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
@@ -254,21 +266,24 @@ def _serialize(exp):
 
 def _redis_get(key):
     if not redis_client:
+        app.logger.info("redis_get skipped (no redis client)")
         return None
     try:
         raw = redis_client.get(key)
         return json.loads(raw) if raw else None
-    except Exception:
+    except Exception as exc:
+        app.logger.warning("redis_get error: %s", exc)
         return None
 
 
 def _redis_set(key, value, ttl=300):
     if not redis_client:
+        app.logger.info("redis_set skipped (no redis client)")
         return
     try:
         redis_client.setex(key, ttl, json.dumps(value))
-    except Exception:
-        pass
+    except Exception as exc:
+        app.logger.warning("redis_set error: %s", exc)
 
 
 def _invalidate_summary_cache(user_id: int):
@@ -276,8 +291,8 @@ def _invalidate_summary_cache(user_id: int):
         return
     try:
         redis_client.delete(f"summary:{user_id}")
-    except Exception:
-        pass
+    except Exception as exc:
+        app.logger.warning("redis_delete error: %s", exc)
 
 
 def _generate_insight(summary_list):
