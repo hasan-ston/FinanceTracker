@@ -41,7 +41,11 @@ jwt = JWTManager(app)
 
 def _init_redis(url: str):
     try:
-        client = redis.from_url(url, decode_responses=True, ssl_cert_reqs=None)
+        kwargs = {"decode_responses": True}
+        if url.startswith("rediss://"):
+            kwargs["ssl"] = True
+            kwargs["ssl_cert_reqs"] = None
+        client = redis.from_url(url, **kwargs)
         client.ping()
         app.logger.info("Redis connected")
         return client
