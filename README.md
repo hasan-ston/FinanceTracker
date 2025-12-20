@@ -51,7 +51,7 @@ Full-stack sample showing a Flask API with Redis caching and a React dashboard f
 - `GET /api/expenses/insights` (auth, AI; requires `OPENAI_API_KEY`)
 
 ## Frontend
-- Vite + React (`frontend/src/App.jsx`) with a dark dashboard: auth, expense entry, AI insight button, category pie, and recent expenses table.
+- Vite + React (`frontend/src/App.jsx`) with a dark dashboard: auth, expense entry, AI spending coach card, category pie, and recent expenses table.
 - Configurable API base via `VITE_API_BASE` (defaults to `http://localhost:5000`).
 
 ## Next steps

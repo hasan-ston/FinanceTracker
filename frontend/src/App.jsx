@@ -12,6 +12,7 @@ export default function App() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [expenseForm, setExpenseForm] = useState({ category: "groceries", description: "", amount: "" });
   const [insight, setInsight] = useState("");
+  const [insightLoading, setInsightLoading] = useState(false);
   const [status, setStatus] = useState("");
 
   useEffect(() => {
@@ -85,6 +86,7 @@ export default function App() {
   async function fetchInsights() {
     setStatus("Fetching AI insights...");
     setInsight("");
+    setInsightLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/expenses/insights`, {
         headers: { ...authHeaders },
@@ -98,6 +100,8 @@ export default function App() {
       setStatus("AI insight ready");
     } catch (err) {
       setStatus("Cannot reach API. Is the backend running on 5000?");
+    } finally {
+      setInsightLoading(false);
     }
   }
 
@@ -198,17 +202,24 @@ export default function App() {
                   </div>
                 </div>
               )}
-              <div className="insight-panel">
-                <div>
-                  <p className="eyebrow">AI helper</p>
-                  <p className="muted">Get a quick read on your spending.</p>
-                </div>
-                <button className="secondary" onClick={fetchInsights}>
-                  Get AI insight
-                </button>
-              </div>
-              {insight && <p className="insight-text">{insight}</p>}
             </div>
+          </section>
+
+          <section className="card ai-card">
+            <div className="card-header">
+              <h2>AI spending coach</h2>
+              <button className="secondary" onClick={fetchInsights} disabled={insightLoading || summary.length === 0}>
+                {insightLoading ? "Thinking..." : "Get AI insight"}
+              </button>
+            </div>
+            {summary.length === 0 ? (
+              <p className="muted">Add a few expenses first, then ask the AI for a quick take on your habits.</p>
+            ) : (
+              <>
+                <p className="muted">Pull a short readout of your category trends.</p>
+                {insight ? <p className="insight-text">{insight}</p> : <p className="muted">Tap “Get AI insight” to fetch the latest.</p>}
+              </>
+            )}
           </section>
 
           <section className="card">

@@ -205,22 +205,6 @@ button:disabled {
   color: var(--muted);
 }
 
-.insight-panel {
-  margin-top: 12px;
-  padding: 12px;
-  background: #0f172a;
-  border: 1px solid var(--outline);
-  border-radius: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.insight-panel .eyebrow {
-  margin: 0;
-}
-
 .insight-text {
   margin: 10px 0 0;
   line-height: 1.5;
