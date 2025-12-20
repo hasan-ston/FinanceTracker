@@ -83,6 +83,26 @@ export default function App() {
     fetchSummary();
   }
 
+  async function handleDeleteExpense(id) {
+    setStatus("Deleting expense...");
+    try {
+      const res = await fetch(`${API_BASE}/api/expenses/${id}`, {
+        method: "DELETE",
+        headers: { ...authHeaders },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus(data.error || "Could not delete expense");
+        return;
+      }
+      setExpenses((prev) => prev.filter((exp) => exp.id !== id));
+      fetchSummary();
+      setStatus("Expense deleted");
+    } catch (err) {
+      setStatus("Cannot reach API. Is the backend running on 5000?");
+    }
+  }
+
   async function fetchInsights() {
     setStatus("Fetching AI insights...");
     setInsight("");
@@ -233,6 +253,7 @@ export default function App() {
                 <span>Description</span>
                 <span>Amount</span>
                 <span>Date</span>
+                <span>Actions</span>
               </div>
               {expenses.map((exp) => (
                 <div className="row" key={exp.id}>
@@ -240,6 +261,9 @@ export default function App() {
                   <span>{exp.description || "—"}</span>
                   <span className="amount">${exp.amount.toFixed(2)}</span>
                   <span>{new Date(exp.created_at).toLocaleString()}</span>
+                  <button className="ghost danger" onClick={() => handleDeleteExpense(exp.id)}>
+                    Delete
+                  </button>
                 </div>
               ))}
               {expenses.length === 0 && <p className="muted">Nothing to show yet.</p>}

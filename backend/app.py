@@ -14,8 +14,10 @@ from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 import json
 import google.generativeai as genai
+import logging
 from openai import OpenAI
 import redis
+import time
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # Single-file Flask app to keep things simple.
@@ -30,6 +32,10 @@ app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["REDIS_URL"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 app.config["RATELIMIT_STORAGE_URI"] = os.getenv("RATELIMIT_STORAGE_URI", app.config["REDIS_URL"])
+jw_logger = logging.getLogger("werkzeug")
+jw_logger.setLevel(logging.WARNING)
+logging.basicConfig(level=logging.INFO)
+
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
@@ -160,6 +166,19 @@ def create_expense():
     return jsonify({"expense": _serialize(exp)}), 201
 
 
+@app.delete("/api/expenses/<int:expense_id>")
+@jwt_required()
+def delete_expense(expense_id: int):
+    user_id = int(get_jwt_identity())
+    exp = Expense.query.filter_by(id=expense_id, user_id=user_id).first()
+    if not exp:
+        return jsonify({"error": "Expense not found"}), 404
+    db.session.delete(exp)
+    db.session.commit()
+    _invalidate_summary_cache(user_id)
+    return jsonify({"message": "Expense deleted"})
+
+
 @app.get("/api/expenses")
 @jwt_required()
 def list_expenses():
@@ -176,14 +195,19 @@ def list_expenses():
 @app.get("/api/expenses/summary")
 @jwt_required()
 def expense_summary():
+    start = time.perf_counter()
     user_id = int(get_jwt_identity())
     cache_key = f"summary:{user_id}"
     cached = _redis_get(cache_key)
     if cached is not None:
+        duration_ms = (time.perf_counter() - start) * 1000
+        app.logger.info("summary cache_hit user=%s items=%s duration_ms=%.2f", user_id, len(cached), duration_ms)
         return jsonify({"summary": cached})
 
     summary_list = _compute_summary_list(user_id)
     _redis_set(cache_key, summary_list, ttl=300)
+    duration_ms = (time.perf_counter() - start) * 1000
+    app.logger.info("summary cache_miss user=%s items=%s duration_ms=%.2f", user_id, len(summary_list), duration_ms)
     return jsonify({"summary": summary_list})
 
 
@@ -197,7 +221,8 @@ def expense_insights():
     if not summary_list:
         return jsonify({"insight": "Add some expenses to get insights.", "summary": []})
 
-    insight_text, warning = _generate_insight(summary_list)
+    insight_text, warning, provider = _generate_insight(summary_list)
+    app.logger.info("insights provider=%s user=%s items=%s warning=%s", provider, user_id, len(summary_list), bool(warning))
     response_body = {"insight": insight_text, "summary": summary_list}
     if warning:
         response_body["warning"] = warning
@@ -270,7 +295,7 @@ def _generate_insight(summary_list):
             resp = gemini_model.generate_content(prompt)
             text = (resp.text or "").strip()
             if text:
-                return text, None
+                return text, None, "gemini"
             errors.append("Gemini returned empty text")
         except Exception as exc:
             app.logger.exception("Gemini insight generation failed")
@@ -289,7 +314,7 @@ def _generate_insight(summary_list):
             )
             text = resp.choices[0].message.content.strip()
             if text:
-                return text, None
+                return text, None, "openai"
             errors.append("OpenAI returned empty text")
         except Exception as exc:
             app.logger.exception("OpenAI insight generation failed")
@@ -301,7 +326,7 @@ def _generate_insight(summary_list):
         if errors
         else "AI insights unavailable; showing a quick heuristic summary instead."
     )
-    return fallback, warning
+    return fallback, warning, "fallback"
 
 
 def _fallback_insight(summary_list):
