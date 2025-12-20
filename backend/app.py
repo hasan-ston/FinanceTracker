@@ -170,7 +170,7 @@ def expense_summary():
 @limiter.limit("3 per minute")
 def expense_insights():
     if not openai_client:
-        return jsonify({"error": "AI insights unavailable; set OPENAI_API_KEY"}), 503
+        return jsonify({"error": "AI insights unavailable. OPENAI_API_KEY not configured."}), 503
 
     user_id = int(get_jwt_identity())
     summary_list = _compute_summary_list(user_id)
@@ -183,8 +183,11 @@ def expense_insights():
             "Avoid jargon. Data: "
             + "; ".join(f"{item['category']}: {item['total']}" for item in summary_list)
         )
+        
+        print(f"Making OpenAI request for user {user_id}")  # Debug log
+        
         resp = openai_client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+            model="gpt-4o-mini",  # Use the newer, cheaper model
             messages=[
                 {"role": "system", "content": "Keep responses brief and actionable."},
                 {"role": "user", "content": prompt},
@@ -193,10 +196,19 @@ def expense_insights():
             temperature=0.4,
         )
         insight_text = resp.choices[0].message.content.strip()
-    except Exception:
-        return jsonify({"error": "AI service error"}), 502
-
-    return jsonify({"insight": insight_text, "summary": summary_list})
+        return jsonify({"insight": insight_text, "summary": summary_list})
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"OpenAI API error: {error_msg}")  # This shows in Render logs
+        
+        # Return user-friendly error
+        if "insufficient_quota" in error_msg:
+            return jsonify({"error": "OpenAI API quota exceeded. Please check your billing."}), 502
+        elif "invalid_api_key" in error_msg:
+            return jsonify({"error": "Invalid OpenAI API key configured."}), 502
+        else:
+            return jsonify({"error": f"AI service temporarily unavailable: {error_msg}"}), 502
 
 
 @app.get("/healthz")
