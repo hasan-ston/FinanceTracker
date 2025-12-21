@@ -1,6 +1,6 @@
 # Personal Finance Tracker
 
-Flask + React expense tracker with Redis caching, JWT auth, and spending insights that are AI-powered. Built to learn production backend concepts: Redis caching, stateless auth (JWT), database optimization, and deployment
+Expense tracker built with Flask, React, Redis, and JWT. Focused on learning production backend: caching strategies, database optimization, and scalable deployment.
 🔗 Try it: [App](https://experiement-ijm4-lpui9zc72-hasan-stons-projects.vercel.app/)
 
 ## What it does
