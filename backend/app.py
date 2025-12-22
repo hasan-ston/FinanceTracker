@@ -328,7 +328,7 @@ def _generate_insight(summary_list):
     if openai_client:
         try:
             resp = openai_client.chat.completions.create(
-                model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 messages=[
                     {"role": "system", "content": "Keep responses brief and actionable."},
                     {"role": "user", "content": prompt},
