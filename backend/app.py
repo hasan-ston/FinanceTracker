@@ -13,7 +13,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 import json
-import google.generativeai as genai
+from google import genai
 import logging
 from openai import OpenAI
 import redis
@@ -55,25 +55,19 @@ def _init_redis(url: str):
 
 
 # Initialize AI providers
-gemini_model = None
-openai_client = None
+gemini_client = None
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
 _gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 if _gemini_api_key:
     try:
-        genai.configure(api_key=_gemini_api_key)
-
-        GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
-
         if GEMINI_MODEL.endswith("-latest"):
             GEMINI_MODEL = GEMINI_MODEL.replace("-latest", "")
-
-        gemini_model = genai.GenerativeModel(GEMINI_MODEL)
-
-        app.logger.info("Gemini AI initialized model=%s", GEMINI_MODEL)
-
-    except Exception as exc:
+        gemini_client = genai.Client(api_key=_gemini_api_key)
+        app.logger.info("Gemini client initialized model=%s", GEMINI_MODEL)
+    except Exception:
         app.logger.exception("Gemini initialization error")
 
+openai_client = None
 _openai_api_key = os.getenv("OPENAI_API_KEY")
 if _openai_api_key:
     try:
@@ -317,10 +311,13 @@ def _generate_insight(summary_list):
 
     errors = []
 
-    if gemini_model:
+    if gemini_client:
         try:
-            resp = gemini_model.generate_content(prompt)
-            text = (resp.text or "").strip()
+            resp = gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+            )
+            text = (getattr(resp, "text", "") or "").strip()
             if text:
                 return text, None, "gemini"
             errors.append("Gemini returned empty text")
