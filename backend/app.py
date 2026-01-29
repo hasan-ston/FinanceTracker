@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+import math
+from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -22,8 +23,21 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 # Single-file Flask app to keep things simple.
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret")
+
+# In production, these secrets MUST be set via environment variables.
+# Fallback to dev values only when explicitly in development mode.
+_is_dev = os.getenv("FLASK_ENV", "production").lower() in ("development", "dev")
+_secret_key = os.getenv("SECRET_KEY")
+_jwt_secret_key = os.getenv("JWT_SECRET_KEY")
+
+if not _is_dev and (not _secret_key or not _jwt_secret_key):
+    raise RuntimeError(
+        "SECRET_KEY and JWT_SECRET_KEY must be set in production. "
+        "Set FLASK_ENV=development for local dev mode."
+    )
+
+app.config["SECRET_KEY"] = _secret_key or "dev-secret-key"
+app.config["JWT_SECRET_KEY"] = _jwt_secret_key or "dev-jwt-secret"
 _db_url = os.getenv("DATABASE_URL", "sqlite:///finance.db")
 # Prefer psycopg (v3) driver if using Postgres and no driver specified.
 if _db_url.startswith("postgresql://"):
@@ -86,7 +100,20 @@ limiter = Limiter(
     default_limits=["200 per hour"],
 )
 
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+# Configure CORS with allowed origins from environment variable.
+# In production, set ALLOWED_ORIGINS to a comma-separated list of allowed domains.
+# Defaults to "*" only in development mode.
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "").strip()
+if _allowed_origins:
+    _cors_origins = [origin.strip() for origin in _allowed_origins.split(",")]
+elif _is_dev:
+    _cors_origins = "*"
+else:
+    # In production without ALLOWED_ORIGINS set, default to a restrictive setting
+    _cors_origins = []
+    app.logger.warning("ALLOWED_ORIGINS not set in production - CORS will be restrictive")
+
+CORS(app, resources={r"/api/*": {"origins": _cors_origins}})
 
 
 # User model 
@@ -95,7 +122,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def set_password(self, password: str):
         self.password_hash = generate_password_hash(password)
@@ -112,7 +139,7 @@ class Expense(db.Model):
     category = db.Column(db.String(64), nullable=False)
     description = db.Column(db.String(255))
     amount = db.Column(db.Float, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 with app.app_context():
@@ -172,11 +199,26 @@ def create_expense():
     if not category or amount is None:
         return jsonify({"error": "Category and amount required"}), 400
 
+    try:
+        amount_float = float(amount)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Amount must be a valid number"}), 400
+
+    if not math.isfinite(amount_float):
+        return jsonify({"error": "Amount must be a valid number"}), 400
+
+    if amount_float < 0:
+        return jsonify({"error": "Amount cannot be negative"}), 400
+
+    # Reasonable upper bound for personal expense tracking (10 million)
+    if amount_float > 10_000_000:
+        return jsonify({"error": "Amount exceeds maximum allowed value"}), 400
+
     exp = Expense(
         user_id=int(get_jwt_identity()),
         category=category,
         description=description,
-        amount=float(amount),
+        amount=amount_float,
     )
     db.session.add(exp)
     db.session.commit()
@@ -376,4 +418,5 @@ def _fallback_insight(summary_list):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Only enable debug mode when explicitly in development
+    app.run(host="0.0.0.0", port=5000, debug=_is_dev)
