@@ -1,1 +1,21 @@
 backend/finance.db
+
+# Build artifacts
+frontend/dist/
+
+# Dependencies
+frontend/node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.idea/
+.vscode/
+
+# Environment files
+.env
+.env.local
+.env.*.local
