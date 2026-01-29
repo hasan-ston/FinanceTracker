@@ -1,4 +1,5 @@
 import os
+import math
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
@@ -203,8 +204,15 @@ def create_expense():
     except (TypeError, ValueError):
         return jsonify({"error": "Amount must be a valid number"}), 400
 
+    if not math.isfinite(amount_float):
+        return jsonify({"error": "Amount must be a valid number"}), 400
+
     if amount_float < 0:
         return jsonify({"error": "Amount cannot be negative"}), 400
+
+    # Reasonable upper bound for personal expense tracking (10 million)
+    if amount_float > 10_000_000:
+        return jsonify({"error": "Amount exceeds maximum allowed value"}), 400
 
     exp = Expense(
         user_id=int(get_jwt_identity()),
